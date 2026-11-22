@@ -233,6 +233,22 @@ def _build_seating_image(row, fmt: str):
     TEXT   = (232, 236, 244)
     MUTED  = (107, 122, 155)
 
+    SEAT_TYPES = {
+        "front":   ((28, 40, 84),  (96, 140, 255),  "FRONT"),
+        "aisle":   ((20, 64, 44),  (52, 211, 120),  "AISLE"),
+        "exit":    ((84, 30, 30),  (248, 113, 113), "EXIT"),
+        "blocked": ((40, 44, 56),  (150, 160, 185), "BLOCKED"),
+        "normal":  (PANEL, BORDER, ""),
+    }
+
+    def seat_type(smeta):
+        if smeta.get("is_blocked") or smeta.get("type") == "blocked":
+            return "blocked"
+        t = smeta.get("type")
+        if t in SEAT_TYPES:
+            return t
+        return "front" if smeta.get("is_front") else "aisle" if smeta.get("is_aisle") else "normal"
+
     img  = Image.new("RGB", (W, H), BG)
     draw = ImageDraw.Draw(img)
 
@@ -267,18 +283,21 @@ def _build_seating_image(row, fmt: str):
             draw.text((MARGIN+LABEL_W-6, ry+CELL//2), f"R{r+1}",
                       font=font_sm, fill=MUTED, anchor="rm")
             for c in range(fl["cols"]):
-                # floor 1 ids stay R1C1, upper floors are F2
                 sid   = f"R{r+1}C{c+1}" if f == 0 else f"F{f+1}R{r+1}C{c+1}"
                 smeta = seats_meta.get(sid, {})
                 x0, y0 = MARGIN+LABEL_W+c*(CELL+GAP), ry
                 x1, y1 = x0+CELL, y0+CELL
                 radius  = 6
 
-                if smeta.get("is_blocked") or smeta.get("type") == "blocked":
+                stype = seat_type(smeta)
+                s_fill, s_out, s_tag = SEAT_TYPES[stype]
+
+                if stype == "blocked":
                     draw.rounded_rectangle([x0,y0,x1,y1], radius=radius,
-                                           fill=(13,16,23), outline=BORDER)
-                    draw.line([x0+12,y0+12,x1-12,y1-12], fill=MUTED, width=2)
-                    draw.line([x1-12,y0+12,x0+12,y1-12], fill=MUTED, width=2)
+                                           fill=s_fill, outline=s_out, width=2)
+                    draw.line([x0+14,y0+10,x1-14,y1-24], fill=s_out, width=3)
+                    draw.line([x1-14,y0+10,x0+14,y1-24], fill=s_out, width=3)
+                    draw.text((x0+CELL//2, y1-11), s_tag, font=font_name, fill=s_out, anchor="mm")
                 elif sid in seat_to_name:
                     pname = seat_to_name[sid]
                     p     = p_map.get(pname, {})
@@ -289,15 +308,21 @@ def _build_seating_image(row, fmt: str):
                                            fill=bg, outline=color, width=2)
                     draw.rounded_rectangle([x0,y0,x1,y0+4], radius=2, fill=color)
                     short = pname if len(pname)<=10 else pname[:9]+"…"
-                    draw.text((x0+CELL//2, y0+CELL//2), short,
+                    draw.text((x0+CELL//2, y0+CELL//2-4), short,
                               font=font_name, fill=TEXT, anchor="mm")
+                    if s_tag:
+                        draw.rounded_rectangle([x0+CELL//2-22, y1-17, x0+CELL//2+22, y1-4],
+                                               radius=3, fill=s_out)
+                        draw.text((x0+CELL//2, y1-10), s_tag, font=font_name,
+                                  fill=BG, anchor="mm")
                 else:
-                    oc = (59,80,150) if smeta.get("is_front") else \
-                         (30,90,60)  if smeta.get("is_aisle") else BORDER
                     draw.rounded_rectangle([x0,y0,x1,y1], radius=radius,
-                                           fill=PANEL, outline=oc)
+                                           fill=s_fill, outline=s_out, width=2)
+                    if s_tag:
+                        draw.text((x0+CELL//2, y0+CELL//2), s_tag, font=font_name,
+                                  fill=s_out, anchor="mm")
 
-    # group legend
+   
     leg_x, leg_y = MARGIN, y_end + GAP + 8
     if leg_y+20 < H and groups:
         draw.text((leg_x, leg_y), "Groups: ", font=font_sm, fill=MUTED)
@@ -307,6 +332,20 @@ def _build_seating_image(row, fmt: str):
             draw.rectangle([leg_x, leg_y+2, leg_x+10, leg_y+12], fill=c)
             draw.text((leg_x+14, leg_y), g, font=font_sm, fill=MUTED)
             leg_x += 14 + len(g)*7 + 10
+
+    if seats_meta:
+        present = {seat_type(m) for m in seats_meta.values()}
+        tx, ty = MARGIN, y_end + GAP + 30
+        draw.text((tx, ty), "Seats: ", font=font_sm, fill=MUTED)
+        tx += 50
+        for key, label in [("front", "Front row"), ("aisle", "Aisle"), ("exit", "Exit"),
+                           ("blocked", "Blocked"), ("normal", "Normal")]:
+            if key not in present:
+                continue
+            lf, lo, _ = SEAT_TYPES[key]
+            draw.rectangle([tx, ty+1, tx+12, ty+13], fill=lf, outline=lo, width=2)
+            draw.text((tx+18, ty), label, font=font_sm, fill=MUTED)
+            tx += 18 + len(label)*7 + 14
 
     buf = io.BytesIO()
     if fmt == "jpeg":
