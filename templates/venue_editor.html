@@ -54,6 +54,10 @@
     onchange="buildGrid()"
   >
 
+  <label>Or pick a size</label>
+  <div id="sizePicker"></div>
+  <p id="sizePickerLabel" style="font-size:12px; color:#666; margin:6px 0 0;"></p>
+
 </div>
 
 
@@ -133,6 +137,30 @@
 
   #seatGrid td.seat-exit {
     background: #fff0f0;
+  }
+
+  /* size picker: 30x30 matches the max the API accepts */
+  #sizePicker {
+    display: grid;
+    grid-template-columns: repeat(30, 14px);
+    gap: 1px;
+    width: max-content;
+    max-width: 100%;
+    overflow-x: auto;
+    margin-top: 4px;
+  }
+
+  #sizePicker .pcell {
+    width: 14px;
+    height: 14px;
+    background: #fff;
+    border: 1px solid #d0d0d0;
+    cursor: pointer;
+  }
+
+  #sizePicker .pcell.on {
+    background: #1a56db;
+    border-color: #1446b8;
   }
 
   #venueDesc {
@@ -256,6 +284,53 @@ function renderGrid() {
 
     table.appendChild(tr);
   }
+
+  syncPicker();
+}
+
+
+// size picker (like the table picker in word): hover to preview, click to apply.
+// it only fills in the two number inputs and calls buildGrid(), so typing still works the same
+const PICKER_MAX = 30;
+
+function highlightPicker(r, c) {
+  const cells = document.getElementById('sizePicker').children;
+  for (let i = 0; i < cells.length; i++) {
+    const cr = Math.floor(i / PICKER_MAX) + 1;
+    const cc = (i % PICKER_MAX) + 1;
+    cells[i].classList.toggle('on', cr <= r && cc <= c);
+  }
+  document.getElementById('sizePickerLabel').textContent = `${r} rows x ${c} columns`;
+}
+
+// back to showing the current grid size (rows/cols globals)
+function syncPicker() {
+  highlightPicker(rows, cols);
+}
+
+function initPicker() {
+  const picker = document.getElementById('sizePicker');
+
+  for (let r = 1; r <= PICKER_MAX; r++) {
+    for (let c = 1; c <= PICKER_MAX; c++) {
+      const cell = document.createElement('div');
+      cell.className = 'pcell';
+      cell.dataset.r = r;
+      cell.dataset.c = c;
+      picker.appendChild(cell);
+    }
+  }
+
+  picker.addEventListener('mouseover', e => {
+    if (e.target.dataset.r) highlightPicker(+e.target.dataset.r, +e.target.dataset.c);
+  });
+  picker.addEventListener('mouseleave', syncPicker);
+  picker.addEventListener('click', e => {
+    if (!e.target.dataset.r) return;
+    document.getElementById('gridRows').value = e.target.dataset.r;
+    document.getElementById('gridCols').value = e.target.dataset.c;
+    buildGrid();
+  });
 }
 
 
@@ -392,6 +467,8 @@ async function saveVenue() {
   }
 }
 
+
+initPicker();  // has to run before the first renderGrid so the highlight has cells to light up
 
 if (Object.keys(seats).length === 0) {
   applyPreset(document.getElementById('venueType').value);
