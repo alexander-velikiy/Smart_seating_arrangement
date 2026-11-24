@@ -142,7 +142,7 @@ def export_arrangement_csv(arr_id):
                 row["status"],
             ])
     else:
-        # if not solved yet export the roster with blank seat columns
+        # if not solved export the roster with blank seat columns
         for p in parts:
             w.writerow([
                 p["name"],
@@ -180,7 +180,7 @@ def _build_seating_image(row, fmt: str):
     )
     if venue_row:
         layout      = json.loads(venue_row["layout_json"])
-        # accomadate single floor layouts
+        # this is for single floor layouts
         floors      = layout.get("floors") or [
             {"rows": venue_row["rows"], "cols": venue_row["cols"]}]
         seats_meta  = layout.get("seats", {})

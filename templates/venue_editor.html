@@ -119,27 +119,27 @@
   }
 
   #seatGrid td.seat-normal {
-    background: #e8f0ff;
+    background: #4062a0;
   }
 
   #seatGrid td.seat-blocked {
-    background: #ddd;
+    background: #271919;
     color: #999;
   }
 
   #seatGrid td.seat-aisle {
-    background: #e8fff0;
+    background: #35a95e;
   }
 
   #seatGrid td.seat-front {
-    background: #fff8e0;
+    background: #e1b82f;
   }
 
   #seatGrid td.seat-exit {
-    background: #fff0f0;
+    background: #f53d3d;
   }
 
-  /* size picker: 30x30 matches the max the API accepts */
+  /* size picker */
   #sizePicker {
     display: grid;
     grid-template-columns: repeat(30, 14px);
@@ -289,8 +289,7 @@ function renderGrid() {
 }
 
 
-// size picker (like the table picker in word): hover to preview, click to apply.
-// it only fills in the two number inputs and calls buildGrid(), so typing still works the same
+// size picker , used word as insparation
 const PICKER_MAX = 30;
 
 function highlightPicker(r, c) {
@@ -303,7 +302,7 @@ function highlightPicker(r, c) {
   document.getElementById('sizePickerLabel').textContent = `${r} rows x ${c} columns`;
 }
 
-// back to showing the current grid size (rows/cols globals)
+//
 function syncPicker() {
   highlightPicker(rows, cols);
 }

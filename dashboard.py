@@ -37,7 +37,7 @@ def dashboard():
         (uid,),
     ).fetchone()["cnt"]
 
-    # total participants across all arrangements
+    # total participants
     all_parts = db.execute(
         "SELECT participants_json FROM arrangements WHERE user_id = ?", (uid,)
     ).fetchall()

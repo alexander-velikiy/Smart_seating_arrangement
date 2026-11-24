@@ -1,6 +1,4 @@
-# CSP solver for seating assignment: participants are variables, seats are
-# the domain. Runs AC-3 to prune domains, then backtracking search with
-# MRV + LCV + forward checking.
+# CSP solver.runs AC-3 to prune domains, then backtracking search with MRV + LCV + forward checking.
 
 from __future__ import annotations
 
@@ -87,17 +85,15 @@ class GridLayout:
         self.floor_count = len(floors)
 
         self.seats: dict[str, Seat] = {}
-        self.front_rows: dict[int, int] = {}   # floor -> row index that counts as "front"
+        self.front_rows: dict[int, int] = {}  
         for fi, fl in enumerate(floors):
             f_cols = fl["cols"]
             default_aisle = {0, f_cols - 1} if f_cols > 1 else {0}
             f_aisle = fl.get("aisle_cols")
             aisle_set = set(f_aisle) if f_aisle is not None else default_aisle
-            # aisle_cells ((row, col) pairs) wins over aisle_cols: a horizontal aisle
-            # row would otherwise turn every column into an aisle column
             f_cells = fl.get("aisle_cells")
             cell_set = {tuple(rc) for rc in f_cells} if f_cells is not None else None
-            # front row is the first row unless the venue says it's the last one
+            # front row override
             self.front_rows[fi + 1] = fl.get("front_row", 0)
             for r in range(fl["rows"]):
                 for c in range(f_cols):
@@ -268,7 +264,7 @@ class SeatingCSP:
                     if any(self.layout.are_adjacent(seat_id, s) for s in group_seats):
                         return False
                 elif ctype == ConstraintType.SAME_GROUP_TOGETHER:
-                    # Once one group member is seated, later ones must be adjacent to the existing cluster.
+                    # Seat group members together
                     if group_seats and not any(
                         self.layout.are_adjacent(seat_id, s) for s in group_seats
                     ):
@@ -344,7 +340,7 @@ class SeatingCSP:
         return None
 
     def solve(self) -> Optional[dict[str, str]]:
-        # Snapshot domains after AC-3 runs so backtracking starts from the pruned state.
+        # Snapshot domains after AC-3.
         if not self._ac3():
             return None
         working_domains = copy.deepcopy(self.domains)

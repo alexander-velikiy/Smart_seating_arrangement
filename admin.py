@@ -1,4 +1,4 @@
-# admin page: list of all accounts, add a planner, delete an account or reset pass
+# admin page
 
 import secrets
 import sqlite3

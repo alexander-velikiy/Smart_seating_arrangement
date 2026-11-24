@@ -158,7 +158,7 @@ def shared_view(token):
 @sharing_bp.route("/shared/<token>/image.<fmt>")
 def shared_image(token, fmt):
     if fmt not in ("png", "jpeg", "jpg"):
-        return _public_headers(jsonify({"error": "unsupported format — use png or jpeg"})), 400
+        return _public_headers(jsonify({"error": "unsupported format use png or jpeg"})), 400
     if fmt == "jpg":
         fmt = "jpeg"
 

@@ -53,7 +53,7 @@ def login_required(f):
         if "user_id" not in session:
             flash("Please log in to continue.", "info")
             return redirect(url_for("auth.auth_page"))
-        # admin's forced first-login password change gates everything else
+        # force admin password change
         if session.get("force_password_change") and request.endpoint != "auth.change_password":
             flash("Please set a new password before continuing.", "info")
             return redirect(url_for("auth.change_password"))
@@ -62,7 +62,6 @@ def login_required(f):
 
 
 def admin_required(f):
-    # stack under @login_required — this only checks role, not session presence
     @wraps(f)
     def decorated(*args, **kwargs):
         if session.get("role") != "admin":

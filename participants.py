@@ -39,8 +39,6 @@ def participants_list():
         (session["user_id"],),
     ).fetchall()
 
-    # search + group filtering happens here in Python, not in JS —
-    # both come in as query params so the URL stays shareable/bookmarkable
     query        = request.args.get("q", "").strip()
     active_group = request.args.get("group", "").strip()
 
@@ -57,7 +55,7 @@ def participants_list():
     all_groups = sorted({r["group_name"] for r in all_rows if r["group_name"]})
     stats      = compute_stats(all_rows)
 
-    # ?edit=<id> puts the form panel into edit mode for that participant
+    # ?edit=<id> turns on edit mode
     edit_participant = None
     edit_id = request.args.get("edit")
     if edit_id:
@@ -168,10 +166,6 @@ def participant_delete(pid):
     return redirect(url_for("participants.participants_list"))
 
 
-#    json api — unchanged. the arrangement editor's roster-import modal
-#    fetches /api/participants directly via JS, so this has to keep working
-#    exactly as before regardless of how the human-facing page is rendered.
-
 @participants_bp.route("/api/participants", methods=["GET"])
 @login_required
 def api_participants_list():
@@ -265,7 +259,7 @@ def api_participant_delete(pid):
     db.execute("DELETE FROM participants WHERE id = ?", (pid,))
     db.commit()
     return jsonify({"deleted": pid})
-# csv import. same columns the export writes (name, group, ...)
+# csv import
 _TRUTHY = {"1", "yes", "y", "true", "x"}
 
 

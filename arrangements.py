@@ -43,8 +43,7 @@ def arrangements_list():
         (session["user_id"],),
     ).fetchall()
 
-    # plain dicts with counts already computed, so the template just
-    # displays numbers instead of parsing JSON itself
+    # plain dicts with counts already computed
     arrangements = []
     for r in rows:
         row = dict(r)

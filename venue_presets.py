@@ -39,22 +39,22 @@ VENUE_PRESETS = {
     "exam_hall": {
         "label": "Exam Hall", "rows": 8, "cols": 10,
         "blocked": _exam_hall, "aisle_cols": None,
-        "description": "8x10 checkerboard so no two candidates are adjacent.",
+        "description": "8x10 checkerboard pattern.",
     },
     "conference": {
         "label": "Conference Room", "rows": 6, "cols": 8,
         "blocked": _conference, "aisle_cols": None,
-        "description": "6x8 with the middle blocked out as the table; seating around the edge.",
+        "description": "6x8 with the middle blocked out, seating around the edge.",
     },
     "theater": {
         "label": "Theater", "rows": 12, "cols": 15,
         "blocked": _theater, "aisle_cols": {0, 6, 8, 14},
-        "description": "12x15 with a centre aisle; seats next to either aisle count as aisle seats.",
+        "description": "12x15 with a centre aisle.",
     },
     "event_hall": {
         "label": "Event Hall", "rows": 9, "cols": 12,
         "blocked": _event_hall, "aisle_cols": None,
-        "description": "9x12 floor with two walkway rows between three blocks of seats.",
+        "description": "9x12 three blocks of seats.",
     },
 }
 
