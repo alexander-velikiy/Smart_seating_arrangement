@@ -89,10 +89,17 @@
     Reset to preset
   </button>
 
-  <p>Click a seat to apply the selected tool.</p>
+  <p id="toolHint">Click a seat to apply the selected tool.</p>
 
   <table id="seatGrid"></table>
 
+</div>
+
+<!-- shown next to the clicked seat when the aisle tool is active -->
+<div id="aisleMenu" style="display:none">
+  <button type="button" class="btn" id="aisleH"></button>
+  <button type="button" class="btn" id="aisleV"></button>
+  <button type="button" class="btn btn-cancel" onclick="hideAisleMenu()">Cancel</button>
 </div>
 
 
@@ -118,25 +125,31 @@
     font-size: 10px;
   }
 
-  #seatGrid td.seat-normal {
-    background: #4062a0;
+  /* seat colors are set inline from TYPE_COLORS in renderGrid, so no stylesheet can override them */
+
+  /* base.css has no .active style, so the selected tool was invisible */
+  .btn.active {
+    outline: 2px solid #111;
   }
 
-  #seatGrid td.seat-blocked {
-    background: #271919;
-    color: #999;
+  #toolHint {
+    min-height: 1.5em;
   }
 
-  #seatGrid td.seat-aisle {
-    background: #35a95e;
+  #aisleMenu {
+    position: fixed;
+    z-index: 100;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    padding: 6px;
+    background: #fff;
+    border: 1px solid #d0d0d0;
+    box-shadow: 0 2px 6px rgba(0, 0, 0, .2);
   }
 
-  #seatGrid td.seat-front {
-    background: #e1b82f;
-  }
-
-  #seatGrid td.seat-exit {
-    background: #f53d3d;
+  #aisleMenu .btn-cancel {
+    background: #777;
   }
 
   /* size picker */
@@ -194,6 +207,23 @@ let seats;
 
 let currentTool = 'normal';
 
+const TOOL_HINTS = {
+  normal:  'Normal: click a seat to reset it (free, one seat at a time).',
+  blocked: 'Blocked: click any seat to block / unblock it (free, one seat at a time).',
+  aisle:   'Aisle: click a seat, then pick the full row or full column to turn into an aisle.',
+  front:   'Front Row: click any seat in the first or last row to make that whole row the front. Only one front row at a time.',
+  exit:    'Exit: click a seat to mark it (free, one seat at a time).'
+};
+
+// same palette the grid had in the stylesheet, just applied inline
+const TYPE_COLORS = {
+  normal:  { bg: '#4062a0', fg: '' },
+  blocked: { bg: '#271919', fg: '#999' },
+  aisle:   { bg: '#35a95e', fg: '' },
+  front:   { bg: '#e1b82f', fg: '' },
+  exit:    { bg: '#f53d3d', fg: '' }
+};
+
 
 {% if venue %}
 
@@ -212,10 +242,65 @@ seats = {};
 {% endif %}
 
 
+// ---- helpers ----
+
+function sidOf(r, c) {
+  return `R${r + 1}C${c + 1}`;
+}
+
+// grid seats are floor 1 only (R#C#), upper floors (F2R1C1...) are kept but not edited here
+function parseSid(sid) {
+  const m = /^R(\d+)C(\d+)$/.exec(sid);
+  return m ? [parseInt(m[1]) - 1, parseInt(m[2]) - 1] : null;
+}
+
+function setMsg(text) {
+  document.getElementById('toolHint').textContent = text;
+}
+
+// index of the active front row (0 = first row, rows-1 = last row), or -1 if there isn't one.
+// it only exists while at least one non-blocked seat in that row is still typed 'front'
+function frontRowIndex() {
+  for (const r of new Set([0, rows - 1])) {
+    for (let c = 0; c < cols; c++) {
+      const s = seats[sidOf(r, c)];
+      if (s && !s.is_blocked && s.type === 'front') return r;
+    }
+  }
+  return -1;
+}
+
+// take a seat out of the front row, back to what it would be by default
+function unfront(sid) {
+  const s = seats[sid];
+  if (s && !s.is_blocked && s.type === 'front') setType(sid, s.is_aisle ? 'aisle' : 'normal');
+}
+
+// keeps type and the flags in step. csp_bridge reads is_aisle / is_blocked
+// straight off the seat, so a stale is_aisle used to leak into the solver
+function setType(sid, type) {
+  const s = seats[sid];
+  s.type = type;
+  s.is_blocked = type === 'blocked';
+  if (type === 'aisle') s.is_aisle = true;
+  else if (type !== 'front') s.is_aisle = false;  // front keeps whatever it had (default edge cols)
+  dirty = true;
+}
+
+
 function buildGrid(keepExisting = true) {
+
+  // read the front row before rows/cols change, frontRowIndex() uses the old size
+  const hadSeats = keepExisting && Object.keys(seats).length > 0;
+  const fr = hadSeats ? frontRowIndex() : 0;   // fresh grid: front row is R1
+  const oldRows = rows;
 
   rows = parseInt(document.getElementById('gridRows').value) || 5;
   cols = parseInt(document.getElementById('gridCols').value) || 6;
+
+  // a last-row front row stays on the last row when the grid grows/shrinks.
+  // new cells only get 'front' on that row, so resizing can't sneak in a scattered front row
+  const newFront = (fr > 0 && fr === oldRows - 1) ? rows - 1 : fr;
 
   const newSeats = {};
 
@@ -231,7 +316,7 @@ function buildGrid(keepExisting = true) {
 
       } else {
 
-        const isFront = r === 0;
+        const isFront = r === newFront;
         const isAisle = c === 0 || c === cols - 1;
 
         newSeats[sid] = {
@@ -250,6 +335,18 @@ function buildGrid(keepExisting = true) {
   }
 
   seats = newSeats;
+
+  // last-row front row moved because the row count changed: fix up the kept seats
+  if (fr > 0 && fr !== newFront) {
+    if (fr < rows) {
+      for (let c = 0; c < cols; c++) unfront(sidOf(fr, c));
+    }
+    for (let c = 0; c < cols; c++) {
+      const sid = sidOf(newFront, c);
+      if (!seats[sid].is_blocked) setType(sid, 'front');
+    }
+  }
+
   dirty = true;
 
   renderGrid();
@@ -273,11 +370,14 @@ function renderGrid() {
 
       const td = document.createElement('td');
 
-      td.className = 'seat seat-' + seat.type;
+      const type = TYPE_COLORS[seat.type] ? seat.type : 'normal';   // missing/unknown type -> normal
+      td.className = 'seat seat-' + type;
+      td.style.background = TYPE_COLORS[type].bg;
+      td.style.color = TYPE_COLORS[type].fg;
       td.title = sid;
       td.textContent = sid;
 
-      td.onclick = () => paintSeat(sid);
+      td.onclick = (ev) => paintSeat(sid, ev);
 
       tr.appendChild(td);
     }
@@ -333,13 +433,174 @@ function initPicker() {
 }
 
 
-function paintSeat(sid) {
+function paintSeat(sid, ev) {
 
-  seats[sid].type = currentTool;
-  seats[sid].is_blocked = currentTool === 'blocked';
-  dirty = true;
+  ev.stopPropagation();   // otherwise the document click handler closes the aisle menu instantly
+  hideAisleMenu();
 
+  const [r, c] = parseSid(sid);
+  const seat = seats[sid];
+
+  if (currentTool === 'front') {
+    paintFrontRow(r);
+    return;
+  }
+
+  if (currentTool === 'aisle') {
+    showAisleMenu(sid, r, c, ev);
+    return;
+  }
+
+  // ---- free-form tools: blocked / normal / exit ----
+
+  const inActiveFront = r === frontRowIndex();   // -1 when there's no front row
+
+  if (currentTool === 'blocked') {
+    // blocked is the one tool that can be toggled on a single seat anywhere
+    setType(sid, seat.is_blocked ? (inActiveFront ? 'front' : 'normal') : 'blocked');
+    setMsg(TOOL_HINTS.blocked);
+    renderGrid();
+    return;
+  }
+
+  if (currentTool === 'normal') {
+    if (inActiveFront && !seat.is_blocked) {
+      // can't un-front one seat without leaving a scattered front row, so clear the whole row
+      for (let cc = 0; cc < cols; cc++) unfront(sidOf(r, cc));
+      setMsg(`Front row cleared (R${r + 1} is reset as a whole).`);
+    } else if (inActiveFront && seat.is_blocked) {
+      setType(sid, 'front');   // unblocking a seat inside the front row puts it back in the row
+      setMsg(TOOL_HINTS.normal);
+    } else {
+      setType(sid, 'normal');
+      setMsg(TOOL_HINTS.normal);
+    }
+    renderGrid();
+    return;
+  }
+
+  // exit
+  if (inActiveFront && !seat.is_blocked) {
+    setMsg('This is the front row, so a single seat in it can\'t be changed to Exit. Clear the front row first.');
+    return;
+  }
+  setType(sid, 'exit');
+  setMsg(TOOL_HINTS.exit);
   renderGrid();
+}
+
+
+// front row snaps to a full edge row: the first or the last one, never a middle row.
+// only one at a time, so picking the other edge moves it
+function paintFrontRow(r) {
+
+  if (r !== 0 && r !== rows - 1) {
+    setMsg(`The front row must be the first row (R1) or the last row (R${rows}).`);
+    return;
+  }
+
+  const old = frontRowIndex();
+  if (old >= 0 && old !== r) {
+    for (let c = 0; c < cols; c++) unfront(sidOf(old, c));
+  }
+
+  for (let c = 0; c < cols; c++) {
+    const sid = sidOf(r, c);
+    if (seats[sid].is_blocked) continue;   // blocked seats stay blocked
+    setType(sid, 'front');
+  }
+
+  setMsg(`R${r + 1} is now the front row.`);
+  renderGrid();
+}
+
+
+// ---- aisle: full row or full column only ----
+
+function showAisleMenu(sid, r, c, ev) {
+
+  const menu = document.getElementById('aisleMenu');
+
+  const h = document.getElementById('aisleH');
+  const v = document.getElementById('aisleV');
+
+  h.textContent = `Horizontal (row R${r + 1})`;
+  v.textContent = `Vertical (column C${c + 1})`;
+  h.onclick = () => paintAisleLine('row', r, c);
+  v.onclick = () => paintAisleLine('col', r, c);
+
+  menu.style.display = 'flex';
+  menu.style.left = Math.min(ev.clientX + 8, window.innerWidth - 200) + 'px';
+  menu.style.top  = Math.min(ev.clientY + 8, window.innerHeight - 120) + 'px';
+}
+
+
+function hideAisleMenu() {
+  document.getElementById('aisleMenu').style.display = 'none';
+}
+
+
+function paintAisleLine(dir, r, c) {
+
+  let skipped = false;
+
+  const apply = (rr, cc) => {
+    const sid = sidOf(rr, cc);
+    const s = seats[sid];
+    if (s.is_blocked) return;                       // don't overwrite blocked seats
+    if (s.type === 'front') { skipped = true; return; }   // front row stays whole
+    setType(sid, 'aisle');
+  };
+
+  if (dir === 'row') {
+    for (let cc = 0; cc < cols; cc++) apply(r, cc);
+  } else {
+    for (let rr = 0; rr < rows; rr++) apply(rr, c);
+  }
+
+  hideAisleMenu();
+  setMsg(
+    (dir === 'row' ? `Row R${r + 1}` : `Column C${c + 1}`) + ' set as an aisle.' +
+    (skipped ? ' Front-row seats were left as they are.' : '')
+  );
+  renderGrid();
+}
+
+// click anywhere else closes the menu
+document.addEventListener('click', hideAisleMenu);
+
+
+// save-time check so a scattered front row can never reach the DB,
+// even from an old layout that was saved before this rule existed
+function checkFrontRow() {
+
+  const frontRows = new Set();
+
+  for (const sid in seats) {
+    const pos = parseSid(sid);                       // upper floors aren't edited here
+    if (pos && seats[sid].type === 'front') frontRows.add(pos[0]);
+  }
+
+  if (frontRows.size === 0) return null;
+
+  if (frontRows.size > 1) {
+    return 'There can only be one front row. Clear the stray front seats and set the front row again.';
+  }
+
+  const fr = [...frontRows][0];
+
+  if (fr !== 0 && fr !== rows - 1) {
+    return 'The front row must be the first or the last row. Clear the stray front seats and set the front row again.';
+  }
+
+  for (let c = 0; c < cols; c++) {
+    const s = seats[sidOf(fr, c)];
+    if (!s.is_blocked && s.type !== 'front') {
+      return `The front row must cover all of R${fr + 1} (blocked seats excepted). Use the Front Row tool on it to fix it.`;
+    }
+  }
+
+  return null;
 }
 
 
@@ -396,6 +657,7 @@ function resetToPreset() {
 function setTool(tool) {
 
   currentTool = tool;
+  hideAisleMenu();
 
   document
     .querySelectorAll('#tool-normal, #tool-blocked, #tool-aisle, #tool-front, #tool-exit')
@@ -404,6 +666,8 @@ function setTool(tool) {
   document
     .getElementById('tool-' + tool)
     .classList.add('active');
+
+  setMsg(TOOL_HINTS[tool]);
 }
 
 
@@ -416,6 +680,12 @@ async function saveVenue() {
 
   if (!name) {
     alert('Enter a venue name.');
+    return;
+  }
+
+  const frontErr = checkFrontRow();
+  if (frontErr) {
+    alert(frontErr);
     return;
   }
 
@@ -477,6 +747,8 @@ if (Object.keys(seats).length === 0) {
   const p = PRESETS[document.getElementById('venueType').value];
   if (p) document.getElementById('presetHint').textContent = p.description;
 }
+
+setTool('normal');
 
 </script>
 
